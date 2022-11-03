@@ -77,3 +77,74 @@ download_price_data <- function() {
 }
 
 # *****************************************************************************
+
+
+# *****************************************************************************
+# Process data ----
+
+# Download data if necessary
+if (download_data) {
+  download_price_data()
+}
+
+# Clean HLPI data
+dat_hlpi <- read_csv(
+  file = here("data/hlpi.csv"),
+  col_types = "ccccccccinn"
+) |>
+  clean_names() |>
+  # Tidy periods
+  mutate(frequency = "Q") |>
+  separate(col = quarter, into = c("year", "quarter"), sep = "Q", convert = TRUE) |>
+  mutate(date = ymd(paste(year, 3L * quarter, "1", sep = "-"))) |>
+  # Select relevant data
+  select(
+    hlpi_name,
+    series_ref,
+    nzhec_name, level,
+    year, quarter, date,
+    index
+  ) |>
+  # Calculate year-on-year changes
+  arrange(series_ref, date) |>
+  group_by(series_ref) |>
+  mutate(yoy_pct_change = index / dplyr::lag(x = index, n = 4L) - 1) |>
+  ungroup() |>
+  filter(!is.na(yoy_pct_change)) |>
+  # Sort out ordering
+  mutate(series_order = str_sub(
+    string = series_ref,
+    start = 10L, end = -1L
+  )) |>
+  mutate(series_order = ifelse(series_order == "A", "00", series_order)) |>
+  mutate(level = factor(
+    x = level,
+    levels = c("All groups", "group", "subgroup", "class"),
+    ordered = TRUE
+  )) |>
+  mutate(hlpi_name = factor(
+    x = hlpi_name,
+    levels = c(
+      "All households",
+      "Beneficiary",
+      "Maori",
+      "Superannuitant",
+      "Income quintile 1 (low)",
+      "Income quintile 2",
+      "Income quintile 3",
+      "Income quintile 4",
+      "Income quintile 5 (high)",
+      "Expenditure quintile 1 (low)",
+      "Expenditure quintile 2",
+      "Expenditure quintile 3",
+      "Expenditure quintile 4",
+      "Expenditure quintile 5 (high)"
+    ),
+    ordered = TRUE
+  )) |>
+  # Remove subgroups and classes that are duplicates of their parents
+  filter(!(series_order %in% c("04101", "131"))) |>
+  # Arrange
+  arrange(hlpi_name, series_order, date)
+
+# *****************************************************************************
